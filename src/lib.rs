@@ -10,6 +10,8 @@ mod bindings;
 pub enum QHYError {
     #[error("Error initializing QHYCCD SDK, error code {}", error_code)]
     InitSDKError { error_code: u32 },
+    #[error("Error closing QHYCCD SDK, error code {}", error_code)]
+    CloseSDKError { error_code: u32 },
     #[error("Error getting QHYCCD SDK version, error code {:?}", error_code)]
     GetSDKVersionError { error_code: u32 },
     #[error("Error scanning QHYCCD cameras")]
@@ -224,6 +226,17 @@ pub fn init_sdk() -> Result<()> {
         QHYCCD_SUCCESS => Ok(()),
         error_code => {
             let error = QHYError::InitSDKError { error_code };
+            tracing::error!(error = error.to_string().as_str());
+            Err(eyre!(error))
+        }
+    }
+}
+
+pub fn release_sdk() -> Result<()> {
+    match unsafe { bindings::ReleaseQHYCCDResource() } {
+        QHYCCD_SUCCESS => Ok(()),
+        error_code => {
+            let error = QHYError::CloseSDKError { error_code };
             tracing::error!(error = error.to_string().as_str());
             Err(eyre!(error))
         }
@@ -666,7 +679,7 @@ mod tests {
         let size = result.unwrap();
         assert_eq!(size, 27116352);
 
-        loop {
+        for _ in 0..10 {
             let result = get_camera_live_frame(camera.clone(), size as usize);
             if result.is_err() {
                 continue;
@@ -679,5 +692,11 @@ mod tests {
             assert_eq!(image.channels, 1);
             break;
         }
+        let result = end_camera_live(camera.clone());
+        assert!(result.is_ok());
+        let result = close_camera(camera.clone());
+        assert!(result.is_ok());
+        let result = release_sdk();
+        assert!(result.is_ok());
     }
 }
