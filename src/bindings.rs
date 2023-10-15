@@ -47,6 +47,29 @@ extern "C" {
     pub fn StopQHYCCDLive(handle: QhyccdHandle) -> u32;
     pub fn CloseQHYCCD(handle: QhyccdHandle) -> u32;
     pub fn ReleaseQHYCCDResource() -> u32;
+    pub fn GetQHYCCDOverScanArea(
+        handle: QhyccdHandle,
+        startx: *mut u32,
+        starty: *mut u32,
+        sizex: *mut u32,
+        sizey: *mut u32,
+    ) -> u32;
+    pub fn GetQHYCCDEffectiveArea(
+        handle: QhyccdHandle,
+        startx: *mut u32,
+        starty: *mut u32,
+        sizex: *mut u32,
+        sizey: *mut u32,
+    ) -> u32;
+    pub fn ExpQHYCCDSingleFrame(handle: QhyccdHandle) -> u32;
+    pub fn GetQHYCCDSingleFrame(
+        handle: QhyccdHandle,
+        w: *mut u32,
+        h: *mut u32,
+        bpp: *mut u32,
+        channels: *mut u32,
+        imgdata: *mut u8,
+    ) -> u32;
 }
 
 /*

@@ -46,8 +46,18 @@ pub enum QHYError {
     GetImageSizeError,
     #[error("Error getting camera live frame, error code {:?}", error_code)]
     GetCameraLiveFrameError { error_code: u32 },
+    #[error("Error getting camera single frame, error code {:?}", error_code)]
+    GetCameraSingleFrameError { error_code: u32 },
     #[error("Error closing camera, error code {:?}", error_code)]
     CloseCameraError { error_code: u32 },
+    #[error("Error getting camera overscan area, error code {:?}", error_code)]
+    GetCameraOverscanAreaError { error_code: u32 },
+    #[error("Error getting camera effective area, error code {:?}", error_code)]
+    GetCameraEffectiveAreaError { error_code: u32 },
+    #[error("Error getting determining support for camera feature {:?}", feature)]
+    IsCameraFeatureSupportedError { feature: CameraFeature },
+    #[error("Error starting single frame exposure, error code {:?}", error_code)]
+    StartCameraSingleFrameExposureError { error_code: u32 },
 }
 #[derive(Debug, PartialEq, Clone)]
 pub struct QhyccdCamera {
@@ -55,7 +65,7 @@ pub struct QhyccdCamera {
     pub handle: bindings::QhyccdHandle,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum CameraFeature {
     ControlBrightness = 0,                  // image brightness
     ControlContrast = 1,                    // image contrast
@@ -175,6 +185,22 @@ pub struct ImageData {
     pub height: u32,
     pub bits_per_pixel: u32,
     pub channels: u32,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct CCDChipArea {
+    pub start_x: u32,
+    pub start_y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum BayerId {
+    BayerGb = 1,
+    BayerGr = 2,
+    BayerBg = 3,
+    BayerRg = 4,
 }
 
 /// The camera is using PCIE to transfer data
@@ -366,8 +392,15 @@ pub fn get_firmware_version(camera: QhyccdCamera) -> Result<String> {
     }
 }
 
-pub fn is_camera_feature_supported(camera: QhyccdCamera, feature: CameraFeature) -> bool {
-    unsafe { bindings::IsQHYCCDControlAvailable(camera.handle, feature as u32) != QHYCCD_ERROR }
+pub fn is_camera_feature_supported(camera: QhyccdCamera, feature: CameraFeature) -> Result<u32> {
+    match unsafe { bindings::IsQHYCCDControlAvailable(camera.handle, feature as u32) } {
+        QHYCCD_ERROR => {
+            let error = QHYError::IsCameraFeatureSupportedError { feature };
+            tracing::error!(error = error.to_string().as_str());
+            Err(eyre!(error))
+        }
+        is_supported => Ok(is_supported),
+    }
 }
 
 pub fn set_camera_read_mode(camera: QhyccdCamera, mode: u32) -> Result<()> {
@@ -473,14 +506,16 @@ pub fn set_camera_bin_mode(camera: QhyccdCamera, bin_x: u32, bin_y: u32) -> Resu
     }
 }
 
-pub fn set_camera_roi(
-    camera: QhyccdCamera,
-    start_x: u32,
-    start_y: u32,
-    width: u32,
-    height: u32,
-) -> Result<()> {
-    match unsafe { bindings::SetQHYCCDResolution(camera.handle, start_x, start_y, width, height) } {
+pub fn set_camera_roi(camera: QhyccdCamera, roi: CCDChipArea) -> Result<()> {
+    match unsafe {
+        bindings::SetQHYCCDResolution(
+            camera.handle,
+            roi.start_x,
+            roi.start_y,
+            roi.width,
+            roi.height,
+        )
+    } {
         QHYCCD_SUCCESS => Ok(()),
         error_code => {
             let error = QHYError::SetCameraSubFrameError { error_code };
@@ -527,14 +562,14 @@ pub fn end_camera_live(camera: QhyccdCamera) -> Result<()> {
     }
 }
 
-pub fn get_camera_image_size(camera: QhyccdCamera) -> Result<u32> {
+pub fn get_camera_image_size(camera: QhyccdCamera) -> Result<usize> {
     match unsafe { bindings::GetQHYCCDMemLength(camera.handle) } {
         QHYCCD_ERROR => {
             let error = QHYError::GetImageSizeError;
             tracing::error!(error = error.to_string().as_str());
             Err(eyre!(error))
         }
-        size => Ok(size),
+        size => Ok(size as usize),
     }
 }
 
@@ -569,36 +604,103 @@ pub fn get_camera_live_frame(camera: QhyccdCamera, buffer_size: usize) -> Result
     }
 }
 
-/*
-QHYCCD|QHYCCD.CPP|GetQHYCCDSDKVersion|23 9 6 14
-QHYCCD SDK Version: V20230906_14
+pub fn get_camera_single_frame(camera: QhyccdCamera, buffer_size: usize) -> Result<ImageData> {
+    let mut width: u32 = 0;
+    let mut height: u32 = 0;
+    let mut bpp: u32 = 0;
+    let mut channels: u32 = 0;
+    let mut buffer = vec![0u8; buffer_size];
+    match unsafe {
+        bindings::GetQHYCCDSingleFrame(
+            camera.handle,
+            &mut width as *mut u32,
+            &mut height as *mut u32,
+            &mut bpp as *mut u32,
+            &mut channels as *mut u32,
+            buffer.as_mut_ptr(),
+        )
+    } {
+        QHYCCD_SUCCESS => Ok(ImageData {
+            data: buffer,
+            width,
+            height,
+            bits_per_pixel: bpp,
+            channels,
+        }),
+        error_code => {
+            let error = QHYError::GetCameraSingleFrameError { error_code };
+            tracing::error!(error = error.to_string().as_str());
+            Err(eyre!(error))
+        }
+    }
+}
+pub fn get_camera_overscan_area(camera: QhyccdCamera) -> Result<CCDChipArea> {
+    let mut start_x: u32 = 0;
+    let mut start_y: u32 = 0;
+    let mut width: u32 = 0;
+    let mut height: u32 = 0;
+    match unsafe {
+        bindings::GetQHYCCDOverScanArea(
+            camera.handle,
+            &mut start_x as *mut u32,
+            &mut start_y as *mut u32,
+            &mut width as *mut u32,
+            &mut height as *mut u32,
+        )
+    } {
+        QHYCCD_SUCCESS => Ok(CCDChipArea {
+            start_x,
+            start_y,
+            width,
+            height,
+        }),
+        error_code => {
+            let error = QHYError::GetCameraOverscanAreaError { error_code };
+            tracing::error!(error = error.to_string().as_str());
+            Err(eyre!(error))
+        }
+    }
+}
 
--- qhyccd.cpp param
-QHYCCD|QHYCCD.CPP|InitQHYCCDResource()|START
-QHYCCD|QHYCCD.CPP|InitQHYCCDResource|auto_detect_camera:false,call InitQHYCCDResourceInside
-QHYCCD|QHYCCD.CPP|InitQHYCCDResourceInside|START
-QHYCCD|QHYCCD.CPP|libusb_version 1.0.26.11724
-QHYCCD|QHYCCD.CPP|libusb_init(libqhyccd_context) called...
-QHYCCD|QHYCCD.CPP|InitQHYCCDResourceInside|numdev set to 0
-QHYCCD|QHYCCD.CPP|InitQHYCCDResourceInside|END
-************************** config file path  23.9.6.14 svn: 13210  ************************************
-QHYCCD|QHYCCD.CPP|InitQHYCCDResource|Load ini filePath = /home/parallels/projects/libqhyccd-sys  fileName = qhyccd.ini
-Init SDK success!
-Yes!Found QHYCCD,the num is 1
-connected to the first camera from the list,id is QHY178M-222b16468c5966524
-Open QHYCCD success!
-Firmware version:2022_9_5
+pub fn get_camera_effective_area(camera: QhyccdCamera) -> Result<CCDChipArea> {
+    let mut start_x: u32 = 0;
+    let mut start_y: u32 = 0;
+    let mut width: u32 = 0;
+    let mut height: u32 = 0;
+    match unsafe {
+        bindings::GetQHYCCDEffectiveArea(
+            camera.handle,
+            &mut start_x as *mut u32,
+            &mut start_y as *mut u32,
+            &mut width as *mut u32,
+            &mut height as *mut u32,
+        )
+    } {
+        QHYCCD_SUCCESS => Ok(CCDChipArea {
+            start_x,
+            start_y,
+            width,
+            height,
+        }),
+        error_code => {
+            let error = QHYError::GetCameraEffectiveAreaError { error_code };
+            tracing::error!(error = error.to_string().as_str());
+            Err(eyre!(error))
+        }
+    }
+}
 
-Init QHYCCD success!
-GetQHYCCDChipInfo success!
-CCD/CMOS chip information:
-Chip width 7334.400000 mm,Chip height 4915.200000 mm
-Chip pixel width 2.400000 um,Chip pixel height 2.400000 um
-Chip Max Resolution is 3056 x 2048,depth is 8
-SetQHYCCDResolution success!
-BeginQHYCCDLive success!
-^C
- */
+pub fn start_camera_single_frame_exposure(camera: QhyccdCamera) -> Result<()> {
+    match unsafe { bindings::ExpQHYCCDSingleFrame(camera.handle) } {
+        QHYCCD_SUCCESS => Ok(()),
+        error_code => {
+            let error = QHYError::StartCameraSingleFrameExposureError { error_code };
+            tracing::error!(error = error.to_string().as_str());
+            Err(eyre!(error))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -630,7 +732,8 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "Firmware version: 2022_9_5");
         let result = is_camera_feature_supported(camera.clone(), CameraFeature::CamLiveVideoMode);
-        assert!(result);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), CameraFeature::CamLiveVideoMode as u32);
         let result = set_camera_read_mode(camera.clone(), 0);
         assert!(result.is_ok());
         let result = set_camera_stream_mode(camera.clone(), CameraStreamMode::LiveMode);
@@ -652,17 +755,24 @@ mod tests {
                 bits_per_pixel: 8
             }
         );
-        assert!(is_camera_feature_supported(
-            camera.clone(),
-            CameraFeature::ControlTransferbit
-        ));
+        assert!(
+            is_camera_feature_supported(camera.clone(), CameraFeature::ControlTransferbit).is_ok()
+        );
         let result = set_camera_bit_mode(camera.clone(), 8);
         assert!(result.is_ok());
         let result = set_camera_debayer_on_off(camera.clone(), false);
         assert!(result.is_ok());
         let result = set_camera_bin_mode(camera.clone(), 1, 1);
         assert!(result.is_ok());
-        let result = set_camera_roi(camera.clone(), 0, 0, 3056, 2048);
+        let result = set_camera_roi(
+            camera.clone(),
+            CCDChipArea {
+                start_x: 0,
+                start_y: 0,
+                width: 3056,
+                height: 2048,
+            },
+        );
         assert!(result.is_ok());
         let result = set_camera_parameter(camera.clone(), CameraFeature::ControlTransferbit, 8.0);
         assert!(result.is_ok());
