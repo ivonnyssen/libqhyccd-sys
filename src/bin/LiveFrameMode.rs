@@ -2,12 +2,12 @@
 use std::{thread, time::Duration};
 
 use libqhyccd_sys::{
-    begin_camera_live, close_camera, end_camera_live, get_camera_ccd_info, get_camera_id,
-    get_camera_image_size, get_camera_live_frame, get_firmware_version, get_sdk_version,
-    init_camera, init_sdk, is_camera_feature_supported, open_camera, release_sdk, scan_qhyccd,
-    set_camera_bin_mode, set_camera_bit_mode, set_camera_debayer_on_off, set_camera_parameter,
-    set_camera_read_mode, set_camera_roi, set_camera_stream_mode, CCDChipArea, CameraFeature,
-    CameraStreamMode,
+    begin_camera_live, close_camera, end_camera_live, get_camera_ccd_info,
+    get_camera_effective_area, get_camera_id, get_camera_image_size, get_camera_live_frame,
+    get_camera_overscan_area, get_firmware_version, get_sdk_version, init_camera, init_sdk,
+    is_camera_feature_supported, open_camera, release_sdk, scan_qhyccd, set_camera_bin_mode,
+    set_camera_bit_mode, set_camera_debayer_on_off, set_camera_parameter, set_camera_read_mode,
+    set_camera_roi, set_camera_stream_mode, CameraFeature, CameraStreamMode,
 };
 use tracing::trace;
 use tracing_subscriber::FmtSubscriber;
@@ -48,27 +48,32 @@ fn main() {
     let info = get_camera_ccd_info(camera.clone()).expect("get_camera_ccd_info failed");
     trace!(ccd_info = ?info);
 
+    let over_scan_area =
+        get_camera_overscan_area(camera.clone()).expect("get_camera_overscan_area failed");
+    trace!(over_scan_area = ?over_scan_area);
+
+    let effective_area =
+        get_camera_effective_area(camera.clone()).expect("get_camera_effective_area failed");
+    trace!(effective_area = ?effective_area);
+
     set_camera_bit_mode(camera.clone(), 8).expect("set_camera_bit_mode failed");
     set_camera_debayer_on_off(camera.clone(), false).expect("set_camera_debayer_on_off failed");
     set_camera_bin_mode(camera.clone(), 1, 1).expect("set_camera_bin_mode failed");
-    set_camera_roi(
-        camera.clone(),
-        CCDChipArea {
-            start_x: 0,
-            start_y: 0,
-            width: 3056,
-            height: 2048,
-        },
-    )
-    .expect("set_camera_roi failed");
-    set_camera_parameter(camera.clone(), CameraFeature::ControlTransferbit, 8.0)
+
+    set_camera_roi(camera.clone(), effective_area).expect("set_camera_roi failed");
+    trace!(roi = ?effective_area);
+    set_camera_parameter(camera.clone(), CameraFeature::ControlTransferBit, 8.0)
         .expect("set_camera_parameter failed");
+    trace!(control_transferbit = 8.0);
     set_camera_parameter(camera.clone(), CameraFeature::ControlExposure, 2000.0)
         .expect("set_camera_parameter failed");
+    trace!(control_exposure = 2000.0);
     set_camera_parameter(camera.clone(), CameraFeature::ControlUsbTraffic, 255.0)
         .expect("set_camera_parameter failed");
+    trace!(control_usb_traffic = 255.0);
     set_camera_parameter(camera.clone(), CameraFeature::ControlDDR, 1.0)
         .expect("set_camera_parameter failed");
+    trace!(control_ddr = 1.0);
     begin_camera_live(camera.clone()).expect("begin_camera_live failed");
     let size = get_camera_image_size(camera.clone()).expect("get_camera_image_size failed");
     trace!(image_size = ?size);

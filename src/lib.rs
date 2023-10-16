@@ -77,7 +77,7 @@ pub enum CameraFeature {
     ControlOffset = 7,                      // camera offset
     ControlExposure = 8,                    // expose time (us)
     ControlSpeed = 9,                       // transfer speed
-    ControlTransferbit = 10,                // image depth bits
+    ControlTransferBit = 10,                // image depth bits
     ControlChannels = 11,                   // image channels
     ControlUsbTraffic = 12,                 // hblank
     ControlRowDeNoise = 13,                 // row denoise
@@ -187,7 +187,7 @@ pub struct ImageData {
     pub channels: u32,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct CCDChipArea {
     pub start_x: u32,
     pub start_y: u32,
@@ -756,7 +756,7 @@ mod tests {
             }
         );
         assert!(
-            is_camera_feature_supported(camera.clone(), CameraFeature::ControlTransferbit).is_ok()
+            is_camera_feature_supported(camera.clone(), CameraFeature::ControlTransferBit).is_ok()
         );
         let result = set_camera_bit_mode(camera.clone(), 8);
         assert!(result.is_ok());
@@ -774,7 +774,7 @@ mod tests {
             },
         );
         assert!(result.is_ok());
-        let result = set_camera_parameter(camera.clone(), CameraFeature::ControlTransferbit, 8.0);
+        let result = set_camera_parameter(camera.clone(), CameraFeature::ControlTransferBit, 8.0);
         assert!(result.is_ok());
         let result = set_camera_parameter(camera.clone(), CameraFeature::ControlExposure, 2000.0);
         assert!(result.is_ok());
