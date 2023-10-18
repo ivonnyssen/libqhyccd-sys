@@ -2,12 +2,11 @@
 use std::{thread, time::Duration};
 
 use libqhyccd_sys::{
-    begin_camera_live, close_camera, end_camera_live, get_camera_ccd_info,
-    get_camera_effective_area, get_camera_id, get_camera_image_size, get_camera_live_frame,
-    get_camera_overscan_area, get_firmware_version, get_sdk_version, init_camera, init_sdk,
-    is_camera_feature_supported, open_camera, release_sdk, scan_qhyccd, set_camera_bin_mode,
-    set_camera_bit_mode, set_camera_debayer_on_off, set_camera_parameter, set_camera_read_mode,
-    set_camera_roi, set_camera_stream_mode, CameraFeature, CameraStreamMode,
+    begin_live, close_camera, end_live, get_camera_id, get_ccd_info, get_effective_area,
+    get_firmware_version, get_image_size, get_live_frame, get_overscan_area, get_sdk_version,
+    init_camera, init_sdk, is_feature_supported, open_camera, release_sdk, scan_qhyccd,
+    set_bin_mode, set_bit_mode, set_parameter, set_read_mode, set_roi, set_stream_mode,
+    CameraFeature, CameraStreamMode,
 };
 use tracing::trace;
 use tracing_subscriber::FmtSubscriber;
@@ -35,51 +34,50 @@ fn main() {
     let fw_version = get_firmware_version(camera.clone()).expect("get_firmware_version failed");
     trace!(fw_version = ?fw_version);
 
-    if is_camera_feature_supported(camera.clone(), CameraFeature::CamLiveVideoMode).is_err() {
+    if is_feature_supported(camera.clone(), CameraFeature::CamLiveVideoMode).is_err() {
         release_sdk().expect("release_sdk failed");
         panic!("CameraFeature::CamLiveVideoMode is not supported");
     }
 
     trace!("CameraFeature::CamLiveVideoMode is supported");
-    set_camera_read_mode(camera.clone(), 0).expect("set_camera_read_mode failed");
-    set_camera_stream_mode(camera.clone(), CameraStreamMode::LiveMode)
+    set_read_mode(camera.clone(), 0).expect("set_camera_read_mode failed");
+    set_stream_mode(camera.clone(), CameraStreamMode::LiveMode)
         .expect("set_camera_stream_mode failed");
     init_camera(camera.clone()).expect("init_camera failed");
-    let info = get_camera_ccd_info(camera.clone()).expect("get_camera_ccd_info failed");
+    let info = get_ccd_info(camera.clone()).expect("get_camera_ccd_info failed");
     trace!(ccd_info = ?info);
 
     let over_scan_area =
-        get_camera_overscan_area(camera.clone()).expect("get_camera_overscan_area failed");
+        get_overscan_area(camera.clone()).expect("get_camera_overscan_area failed");
     trace!(over_scan_area = ?over_scan_area);
 
     let effective_area =
-        get_camera_effective_area(camera.clone()).expect("get_camera_effective_area failed");
+        get_effective_area(camera.clone()).expect("get_camera_effective_area failed");
     trace!(effective_area = ?effective_area);
 
-    set_camera_bit_mode(camera.clone(), 8).expect("set_camera_bit_mode failed");
-    set_camera_debayer_on_off(camera.clone(), false).expect("set_camera_debayer_on_off failed");
-    set_camera_bin_mode(camera.clone(), 1, 1).expect("set_camera_bin_mode failed");
+    set_bit_mode(camera.clone(), 8).expect("set_camera_bit_mode failed");
+    set_bin_mode(camera.clone(), 1, 1).expect("set_camera_bin_mode failed");
 
-    set_camera_roi(camera.clone(), effective_area).expect("set_camera_roi failed");
+    set_roi(camera.clone(), effective_area).expect("set_camera_roi failed");
     trace!(roi = ?effective_area);
-    set_camera_parameter(camera.clone(), CameraFeature::ControlTransferBit, 8.0)
+    set_parameter(camera.clone(), CameraFeature::ControlTransferBit, 8.0)
         .expect("set_camera_parameter failed");
     trace!(control_transferbit = 8.0);
-    set_camera_parameter(camera.clone(), CameraFeature::ControlExposure, 2000.0)
+    set_parameter(camera.clone(), CameraFeature::ControlExposure, 2000.0)
         .expect("set_camera_parameter failed");
     trace!(control_exposure = 2000.0);
-    set_camera_parameter(camera.clone(), CameraFeature::ControlUsbTraffic, 255.0)
+    set_parameter(camera.clone(), CameraFeature::ControlUsbTraffic, 255.0)
         .expect("set_camera_parameter failed");
     trace!(control_usb_traffic = 255.0);
-    set_camera_parameter(camera.clone(), CameraFeature::ControlDDR, 1.0)
+    set_parameter(camera.clone(), CameraFeature::ControlDDR, 1.0)
         .expect("set_camera_parameter failed");
     trace!(control_ddr = 1.0);
-    begin_camera_live(camera.clone()).expect("begin_camera_live failed");
-    let size = get_camera_image_size(camera.clone()).expect("get_camera_image_size failed");
+    begin_live(camera.clone()).expect("begin_camera_live failed");
+    let size = get_image_size(camera.clone()).expect("get_camera_image_size failed");
     trace!(image_size = ?size);
 
     for _ in 0..1000 {
-        let result = get_camera_live_frame(camera.clone(), size as usize);
+        let result = get_live_frame(camera.clone(), size as usize);
         if result.is_err() {
             trace!("get_camera_live_frame returned error");
             thread::sleep(Duration::from_millis(100));
@@ -89,7 +87,7 @@ fn main() {
         trace!(image = ?image);
         break;
     }
-    end_camera_live(camera.clone()).expect("end_camera_live failed");
+    end_live(camera.clone()).expect("end_camera_live failed");
     close_camera(camera.clone()).expect("close_camera failed");
     release_sdk().expect("release_sdk failed");
 }
