@@ -1,5 +1,4 @@
 use std::ffi::CStr;
-use std::sync::Arc;
 
 use eyre::eyre;
 use eyre::Result;
@@ -67,11 +66,23 @@ pub enum QHYError {
     GetReadoutModeResolutionError,
     #[error("Error getting camera readout mode")]
     GetReadoutModeError,
+    #[error("Error getting model of camera {:?}", error_code)]
+    GetCameraModelError { error_code: u32 },
+    #[error("Error getting type of camera")]
+    GetCameraTypeError,
 }
-#[derive(Debug, PartialEq, Clone)]
-pub struct QhyccdCamera {
-    pub id: Arc<[u8; 32]>,
-    pub handle: bindings::QhyccdHandle,
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct QhyccdHandle {
+    ptr: bindings::QhyccdHandle,
+}
+
+unsafe impl Send for QhyccdHandle {}
+unsafe impl Sync for QhyccdHandle {}
+
+impl QhyccdHandle {
+    pub fn new(ptr: bindings::QhyccdHandle) -> Self {
+        Self { ptr }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -212,6 +223,12 @@ pub enum BayerId {
     BayerRg = 4,
 }
 
+#[derive(Debug, PartialEq)]
+pub struct ReadoutMode {
+    pub id: u32,
+    pub name: String,
+}
+
 /// initialize the QHYCCD SDK
 ///
 /// # Example
@@ -306,11 +323,20 @@ pub fn get_sdk_version() -> Result<SDKVersion> {
     }
 }
 
-pub fn get_camera_id(index: u32) -> Result<Arc<[u8; 32]>> {
+pub fn get_camera_id(index: u32) -> Result<String> {
     let mut id = [0u8; 32];
     unsafe {
         match bindings::GetQHYCCDId(index, id.as_mut_ptr()) {
-            bindings::QHYCCD_SUCCESS => Ok(Arc::new(id)),
+            bindings::QHYCCD_SUCCESS => {
+                let id = match CStr::from_ptr(id.as_ptr()).to_str() {
+                    Ok(id) => id,
+                    Err(error) => {
+                        tracing::error!(error = error.to_string().as_str());
+                        return Err(eyre!(error));
+                    }
+                };
+                Ok(id.to_string())
+            }
             error_code => {
                 let error = QHYError::GetCameraIdError { error_code };
                 tracing::error!(error = error.to_string().as_str());
@@ -320,13 +346,23 @@ pub fn get_camera_id(index: u32) -> Result<Arc<[u8; 32]>> {
     }
 }
 
-pub fn open_camera(id: Arc<[u8; 32]>) -> QhyccdCamera {
-    let handle = unsafe { bindings::OpenQHYCCD(id.as_ptr()) };
-    QhyccdCamera { id, handle }
+pub fn open_camera(id: String) -> Result<QhyccdHandle> {
+    unsafe {
+        match std::ffi::CString::new(id) {
+            Ok(id) => {
+                let handle = bindings::OpenQHYCCD(id.as_ptr());
+                Ok(QhyccdHandle::new(handle))
+            }
+            Err(error) => {
+                tracing::error!(error = error.to_string().as_str());
+                Err(eyre!(error))
+            }
+        }
+    }
 }
 
-pub fn close_camera(camera: QhyccdCamera) -> Result<()> {
-    match unsafe { bindings::CloseQHYCCD(camera.handle) } {
+pub fn close_camera(handle: QhyccdHandle) -> Result<()> {
+    match unsafe { bindings::CloseQHYCCD(handle.ptr) } {
         bindings::QHYCCD_SUCCESS => Ok(()),
         error_code => {
             let error = QHYError::CloseCameraError { error_code };
@@ -336,9 +372,9 @@ pub fn close_camera(camera: QhyccdCamera) -> Result<()> {
     }
 }
 
-pub fn get_firmware_version(camera: QhyccdCamera) -> Result<String> {
+pub fn get_firmware_version(handle: QhyccdHandle) -> Result<String> {
     let mut version = [0u8; 32];
-    match unsafe { bindings::GetQHYCCDFWVersion(camera.handle, version.as_mut_ptr()) } {
+    match unsafe { bindings::GetQHYCCDFWVersion(handle.ptr, version.as_mut_ptr()) } {
         bindings::QHYCCD_SUCCESS => {
             if version[0] >> 4 <= 9 {
                 Ok(format!(
@@ -364,8 +400,8 @@ pub fn get_firmware_version(camera: QhyccdCamera) -> Result<String> {
     }
 }
 
-pub fn is_feature_supported(camera: QhyccdCamera, feature: CameraFeature) -> Result<u32> {
-    match unsafe { bindings::IsQHYCCDControlAvailable(camera.handle, feature as u32) } {
+pub fn is_feature_supported(handle: QhyccdHandle, feature: CameraFeature) -> Result<u32> {
+    match unsafe { bindings::IsQHYCCDControlAvailable(handle.ptr, feature as u32) } {
         bindings::QHYCCD_ERROR => {
             let error = QHYError::IsFeatureSupportedError { feature };
             tracing::error!(error = error.to_string().as_str());
@@ -375,8 +411,8 @@ pub fn is_feature_supported(camera: QhyccdCamera, feature: CameraFeature) -> Res
     }
 }
 
-pub fn set_read_mode(camera: QhyccdCamera, mode: u32) -> Result<()> {
-    match unsafe { bindings::SetQHYCCDReadMode(camera.handle, mode) } {
+pub fn set_read_mode(handle: QhyccdHandle, mode: u32) -> Result<()> {
+    match unsafe { bindings::SetQHYCCDReadMode(handle.ptr, mode) } {
         bindings::QHYCCD_SUCCESS => Ok(()),
         error_code => {
             let error = QHYError::SetReadoutModeError { error_code };
@@ -386,8 +422,8 @@ pub fn set_read_mode(camera: QhyccdCamera, mode: u32) -> Result<()> {
     }
 }
 
-pub fn set_stream_mode(camera: QhyccdCamera, mode: CameraStreamMode) -> Result<()> {
-    match unsafe { bindings::SetQHYCCDStreamMode(camera.handle, mode as u8) } {
+pub fn set_stream_mode(handle: QhyccdHandle, mode: CameraStreamMode) -> Result<()> {
+    match unsafe { bindings::SetQHYCCDStreamMode(handle.ptr, mode as u8) } {
         bindings::QHYCCD_SUCCESS => Ok(()),
         error_code => {
             let error = QHYError::SetStreamModeError { error_code };
@@ -397,8 +433,8 @@ pub fn set_stream_mode(camera: QhyccdCamera, mode: CameraStreamMode) -> Result<(
     }
 }
 
-pub fn init_camera(camera: QhyccdCamera) -> Result<()> {
-    match unsafe { bindings::InitQHYCCD(camera.handle) } {
+pub fn init_camera(handle: QhyccdHandle) -> Result<()> {
+    match unsafe { bindings::InitQHYCCD(handle.ptr) } {
         bindings::QHYCCD_SUCCESS => Ok(()),
         error_code => {
             let error = QHYError::InitCameraError { error_code };
@@ -408,7 +444,7 @@ pub fn init_camera(camera: QhyccdCamera) -> Result<()> {
     }
 }
 
-pub fn get_ccd_info(camera: QhyccdCamera) -> Result<CCDChipInfo> {
+pub fn get_ccd_info(handle: QhyccdHandle) -> Result<CCDChipInfo> {
     let mut chipw: f64 = 0.0;
     let mut chiph: f64 = 0.0;
     let mut imagew: u32 = 0;
@@ -418,7 +454,7 @@ pub fn get_ccd_info(camera: QhyccdCamera) -> Result<CCDChipInfo> {
     let mut bpp: u32 = 0;
     match unsafe {
         bindings::GetQHYCCDChipInfo(
-            camera.handle,
+            handle.ptr,
             &mut chipw as *mut f64,
             &mut chiph as *mut f64,
             &mut imagew as *mut u32,
@@ -445,8 +481,8 @@ pub fn get_ccd_info(camera: QhyccdCamera) -> Result<CCDChipInfo> {
     }
 }
 
-pub fn set_bit_mode(camera: QhyccdCamera, mode: u32) -> Result<()> {
-    match unsafe { bindings::SetQHYCCDBitsMode(camera.handle, mode) } {
+pub fn set_bit_mode(handle: QhyccdHandle, mode: u32) -> Result<()> {
+    match unsafe { bindings::SetQHYCCDBitsMode(handle.ptr, mode) } {
         bindings::QHYCCD_SUCCESS => Ok(()),
         error_code => {
             let error = QHYError::SetBitModeError { error_code };
@@ -456,8 +492,8 @@ pub fn set_bit_mode(camera: QhyccdCamera, mode: u32) -> Result<()> {
     }
 }
 
-pub fn set_debayer(camera: QhyccdCamera, on: bool) -> Result<()> {
-    match unsafe { bindings::SetQHYCCDDebayerOnOff(camera.handle, on) } {
+pub fn set_debayer(handle: QhyccdHandle, on: bool) -> Result<()> {
+    match unsafe { bindings::SetQHYCCDDebayerOnOff(handle.ptr, on) } {
         bindings::QHYCCD_SUCCESS => Ok(()),
         error_code => {
             let error = QHYError::SetDebayerError { error_code };
@@ -467,8 +503,8 @@ pub fn set_debayer(camera: QhyccdCamera, on: bool) -> Result<()> {
     }
 }
 
-pub fn set_bin_mode(camera: QhyccdCamera, bin_x: u32, bin_y: u32) -> Result<()> {
-    match unsafe { bindings::SetQHYCCDBinMode(camera.handle, bin_x, bin_y) } {
+pub fn set_bin_mode(handle: QhyccdHandle, bin_x: u32, bin_y: u32) -> Result<()> {
+    match unsafe { bindings::SetQHYCCDBinMode(handle.ptr, bin_x, bin_y) } {
         bindings::QHYCCD_SUCCESS => Ok(()),
         error_code => {
             let error = QHYError::SetBinModeError { error_code };
@@ -478,15 +514,9 @@ pub fn set_bin_mode(camera: QhyccdCamera, bin_x: u32, bin_y: u32) -> Result<()> 
     }
 }
 
-pub fn set_roi(camera: QhyccdCamera, roi: CCDChipArea) -> Result<()> {
+pub fn set_roi(handle: QhyccdHandle, roi: CCDChipArea) -> Result<()> {
     match unsafe {
-        bindings::SetQHYCCDResolution(
-            camera.handle,
-            roi.start_x,
-            roi.start_y,
-            roi.width,
-            roi.height,
-        )
+        bindings::SetQHYCCDResolution(handle.ptr, roi.start_x, roi.start_y, roi.width, roi.height)
     } {
         bindings::QHYCCD_SUCCESS => Ok(()),
         error_code => {
@@ -497,8 +527,8 @@ pub fn set_roi(camera: QhyccdCamera, roi: CCDChipArea) -> Result<()> {
     }
 }
 
-pub fn set_parameter(camera: QhyccdCamera, feature: CameraFeature, value: f64) -> Result<()> {
-    match unsafe { bindings::SetQHYCCDParam(camera.handle, feature as u32, value) } {
+pub fn set_parameter(handle: QhyccdHandle, feature: CameraFeature, value: f64) -> Result<()> {
+    match unsafe { bindings::SetQHYCCDParam(handle.ptr, feature as u32, value) } {
         bindings::QHYCCD_SUCCESS => Ok(()),
         error_code => {
             let error = QHYError::SetParameterError { error_code };
@@ -508,8 +538,8 @@ pub fn set_parameter(camera: QhyccdCamera, feature: CameraFeature, value: f64) -
     }
 }
 
-pub fn begin_live(camera: QhyccdCamera) -> Result<()> {
-    match unsafe { bindings::BeginQHYCCDLive(camera.handle) } {
+pub fn begin_live(handle: QhyccdHandle) -> Result<()> {
+    match unsafe { bindings::BeginQHYCCDLive(handle.ptr) } {
         bindings::QHYCCD_SUCCESS => Ok(()),
         error_code => {
             let error = QHYError::BeginLiveError { error_code };
@@ -519,8 +549,8 @@ pub fn begin_live(camera: QhyccdCamera) -> Result<()> {
     }
 }
 
-pub fn end_live(camera: QhyccdCamera) -> Result<()> {
-    match unsafe { bindings::StopQHYCCDLive(camera.handle) } {
+pub fn end_live(handle: QhyccdHandle) -> Result<()> {
+    match unsafe { bindings::StopQHYCCDLive(handle.ptr) } {
         bindings::QHYCCD_SUCCESS => Ok(()),
         error_code => {
             let error = QHYError::EndLiveError { error_code };
@@ -530,8 +560,8 @@ pub fn end_live(camera: QhyccdCamera) -> Result<()> {
     }
 }
 
-pub fn get_image_size(camera: QhyccdCamera) -> Result<usize> {
-    match unsafe { bindings::GetQHYCCDMemLength(camera.handle) } {
+pub fn get_image_size(handle: QhyccdHandle) -> Result<usize> {
+    match unsafe { bindings::GetQHYCCDMemLength(handle.ptr) } {
         bindings::QHYCCD_ERROR => {
             let error = QHYError::GetImageSizeError;
             tracing::error!(error = error.to_string().as_str());
@@ -541,7 +571,7 @@ pub fn get_image_size(camera: QhyccdCamera) -> Result<usize> {
     }
 }
 
-pub fn get_live_frame(camera: QhyccdCamera, buffer_size: usize) -> Result<ImageData> {
+pub fn get_live_frame(handle: QhyccdHandle, buffer_size: usize) -> Result<ImageData> {
     let mut width: u32 = 0;
     let mut height: u32 = 0;
     let mut bpp: u32 = 0;
@@ -549,7 +579,7 @@ pub fn get_live_frame(camera: QhyccdCamera, buffer_size: usize) -> Result<ImageD
     let mut buffer = vec![0u8; buffer_size];
     match unsafe {
         bindings::GetQHYCCDLiveFrame(
-            camera.handle,
+            handle.ptr,
             &mut width as *mut u32,
             &mut height as *mut u32,
             &mut bpp as *mut u32,
@@ -572,7 +602,7 @@ pub fn get_live_frame(camera: QhyccdCamera, buffer_size: usize) -> Result<ImageD
     }
 }
 
-pub fn get_single_frame(camera: QhyccdCamera, buffer_size: usize) -> Result<ImageData> {
+pub fn get_single_frame(handle: QhyccdHandle, buffer_size: usize) -> Result<ImageData> {
     let mut width: u32 = 0;
     let mut height: u32 = 0;
     let mut bpp: u32 = 0;
@@ -580,7 +610,7 @@ pub fn get_single_frame(camera: QhyccdCamera, buffer_size: usize) -> Result<Imag
     let mut buffer = vec![0u8; buffer_size];
     match unsafe {
         bindings::GetQHYCCDSingleFrame(
-            camera.handle,
+            handle.ptr,
             &mut width as *mut u32,
             &mut height as *mut u32,
             &mut bpp as *mut u32,
@@ -602,14 +632,14 @@ pub fn get_single_frame(camera: QhyccdCamera, buffer_size: usize) -> Result<Imag
         }
     }
 }
-pub fn get_overscan_area(camera: QhyccdCamera) -> Result<CCDChipArea> {
+pub fn get_overscan_area(handle: QhyccdHandle) -> Result<CCDChipArea> {
     let mut start_x: u32 = 0;
     let mut start_y: u32 = 0;
     let mut width: u32 = 0;
     let mut height: u32 = 0;
     match unsafe {
         bindings::GetQHYCCDOverScanArea(
-            camera.handle,
+            handle.ptr,
             &mut start_x as *mut u32,
             &mut start_y as *mut u32,
             &mut width as *mut u32,
@@ -630,14 +660,14 @@ pub fn get_overscan_area(camera: QhyccdCamera) -> Result<CCDChipArea> {
     }
 }
 
-pub fn get_effective_area(camera: QhyccdCamera) -> Result<CCDChipArea> {
+pub fn get_effective_area(handle: QhyccdHandle) -> Result<CCDChipArea> {
     let mut start_x: u32 = 0;
     let mut start_y: u32 = 0;
     let mut width: u32 = 0;
     let mut height: u32 = 0;
     match unsafe {
         bindings::GetQHYCCDEffectiveArea(
-            camera.handle,
+            handle.ptr,
             &mut start_x as *mut u32,
             &mut start_y as *mut u32,
             &mut width as *mut u32,
@@ -658,8 +688,8 @@ pub fn get_effective_area(camera: QhyccdCamera) -> Result<CCDChipArea> {
     }
 }
 
-pub fn start_single_frame_exposure(camera: QhyccdCamera) -> Result<()> {
-    match unsafe { bindings::ExpQHYCCDSingleFrame(camera.handle) } {
+pub fn start_single_frame_exposure(handle: QhyccdHandle) -> Result<()> {
+    match unsafe { bindings::ExpQHYCCDSingleFrame(handle.ptr) } {
         bindings::QHYCCD_SUCCESS => Ok(()),
         error_code => {
             let error = QHYError::StartSingleFrameExposureError { error_code };
@@ -669,9 +699,9 @@ pub fn start_single_frame_exposure(camera: QhyccdCamera) -> Result<()> {
     }
 }
 
-pub fn get_number_of_readout_modes(camera: QhyccdCamera) -> Result<u32> {
+pub fn get_number_of_readout_modes(handle: QhyccdHandle) -> Result<u32> {
     let mut num: u32 = 0;
-    match unsafe { bindings::GetQHYCCDNumberOfReadModes(camera.handle, &mut num as *mut u32) } {
+    match unsafe { bindings::GetQHYCCDNumberOfReadModes(handle.ptr, &mut num as *mut u32) } {
         bindings::QHYCCD_ERROR => {
             let error = QHYError::GetNumberOfReadoutModesError;
             tracing::error!(error = error.to_string().as_str());
@@ -681,16 +711,16 @@ pub fn get_number_of_readout_modes(camera: QhyccdCamera) -> Result<u32> {
     }
 }
 
-pub fn get_readout_mode_name(camera: QhyccdCamera, index: u32) -> Result<String> {
+pub fn get_readout_mode_name(handle: QhyccdHandle, index: u32) -> Result<String> {
     let mut name = [0u8; 80];
-    match unsafe { bindings::GetQHYCCDReadModeName(camera.handle, index, name.as_mut_ptr()) } {
+    match unsafe { bindings::GetQHYCCDReadModeName(handle.ptr, index, name.as_mut_ptr()) } {
         bindings::QHYCCD_ERROR => {
             let error = QHYError::GetReadoutModeNameError;
             tracing::error!(error = error.to_string().as_str());
             Err(eyre!(error))
         }
         _ => {
-            let name = match unsafe { CStr::from_ptr(name.as_ptr()) }.clone().to_str() {
+            let name = match unsafe { CStr::from_ptr(name.as_ptr()) }.to_str() {
                 Ok(name) => name,
                 Err(error) => {
                     tracing::error!(error = error.to_string().as_str());
@@ -702,12 +732,12 @@ pub fn get_readout_mode_name(camera: QhyccdCamera, index: u32) -> Result<String>
     }
 }
 
-pub fn get_readout_mode_resolution(camera: QhyccdCamera, index: u32) -> Result<(u32, u32)> {
+pub fn get_readout_mode_resolution(handle: QhyccdHandle, index: u32) -> Result<(u32, u32)> {
     let mut width: u32 = 0;
     let mut height: u32 = 0;
     match unsafe {
         bindings::GetQHYCCDReadModeResolution(
-            camera.handle,
+            handle.ptr,
             index,
             &mut width as *mut u32,
             &mut height as *mut u32,
@@ -722,14 +752,46 @@ pub fn get_readout_mode_resolution(camera: QhyccdCamera, index: u32) -> Result<(
     }
 }
 
-pub fn get_readout_mode(camera: QhyccdCamera) -> Result<u32> {
+pub fn get_readout_mode(handle: QhyccdHandle) -> Result<u32> {
     let mut mode: u32 = 0;
-    match unsafe { bindings::GetQHYCCDReadMode(camera.handle, &mut mode as *mut u32) } {
+    match unsafe { bindings::GetQHYCCDReadMode(handle.ptr, &mut mode as *mut u32) } {
         bindings::QHYCCD_SUCCESS => Ok(mode),
         _ => {
             let error = QHYError::GetReadoutModeError;
             tracing::error!(error = error.to_string().as_str());
             Err(eyre!(error))
         }
+    }
+}
+
+pub fn get_model(handle: QhyccdHandle) -> Result<String> {
+    let mut model = [0u8; 80];
+    match unsafe { bindings::GetQHYCCDModel(handle.ptr, model.as_mut_ptr()) } {
+        bindings::QHYCCD_SUCCESS => {
+            let model = match unsafe { CStr::from_ptr(model.as_ptr()) }.to_str() {
+                Ok(model) => model,
+                Err(error) => {
+                    tracing::error!(error = error.to_string().as_str());
+                    return Err(eyre!(error));
+                }
+            };
+            Ok(model.to_string())
+        }
+        error_code => {
+            let error = QHYError::GetCameraModelError { error_code };
+            tracing::error!(error = error.to_string().as_str());
+            Err(eyre!(error))
+        }
+    }
+}
+
+pub fn get_type(handle: QhyccdHandle) -> Result<u32> {
+    match unsafe { bindings::GetQHYCCDType(handle.ptr) } {
+        bindings::QHYCCD_ERROR => {
+            let error = QHYError::GetCameraTypeError;
+            tracing::error!(error = error.to_string().as_str());
+            Err(eyre!(error))
+        }
+        camera_type => Ok(camera_type),
     }
 }

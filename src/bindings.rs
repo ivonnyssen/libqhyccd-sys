@@ -91,5 +91,6 @@ extern "C" {
     ) -> u32;
     pub fn GetQHYCCDReadModeName(handle: QhyccdHandle, mode: u32, name: *mut u8) -> u32;
     pub fn GetQHYCCDReadMode(handle: QhyccdHandle, mode: *mut u32) -> u32;
-
+    pub fn GetQHYCCDModel(handle: QhyccdHandle, model: *mut u8) -> u32;
+    pub fn GetQHYCCDType(handle: QhyccdHandle) -> u32;
 }
