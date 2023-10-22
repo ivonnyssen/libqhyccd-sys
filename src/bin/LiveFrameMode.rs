@@ -5,7 +5,7 @@ use libqhyccd_sys::{
     begin_live, close_camera, end_live, get_camera_id, get_ccd_info, get_effective_area,
     get_firmware_version, get_image_size, get_live_frame, get_overscan_area, get_sdk_version,
     init_camera, init_sdk, is_feature_supported, open_camera, release_sdk, scan_qhyccd,
-    set_bin_mode, set_bit_mode, set_parameter, set_read_mode, set_roi, set_stream_mode,
+    set_bin_mode, set_bit_mode, set_parameter, set_readout_mode, set_roi, set_stream_mode,
     CameraFeature, CameraStreamMode,
 };
 use tracing::trace;
@@ -40,7 +40,7 @@ fn main() {
     }
 
     trace!("CameraFeature::CamLiveVideoMode is supported");
-    set_read_mode(camera, 0).expect("set_camera_read_mode failed");
+    set_readout_mode(camera, 0).expect("set_camera_read_mode failed");
     set_stream_mode(camera, CameraStreamMode::LiveMode).expect("set_camera_stream_mode failed");
     init_camera(camera).expect("init_camera failed");
     let info = get_ccd_info(camera).expect("get_camera_ccd_info failed");

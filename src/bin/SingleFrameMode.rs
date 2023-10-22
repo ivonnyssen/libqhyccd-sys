@@ -3,7 +3,7 @@ use libqhyccd_sys::{
     close_camera, get_camera_id, get_ccd_info, get_effective_area, get_firmware_version,
     get_image_size, get_overscan_area, get_sdk_version, get_single_frame, init_camera, init_sdk,
     is_feature_supported, open_camera, release_sdk, scan_qhyccd, set_bin_mode, set_bit_mode,
-    set_parameter, set_read_mode, set_roi, set_stream_mode, start_single_frame_exposure,
+    set_parameter, set_readout_mode, set_roi, set_stream_mode, start_single_frame_exposure,
     CameraFeature, CameraStreamMode,
 };
 use tracing::{error, trace};
@@ -42,7 +42,7 @@ fn main() {
         .expect("set_camera_stream_mode failed");
     trace!(set_camera_stream_mode = ?CameraStreamMode::SingleFrameMode);
 
-    set_read_mode(camera, 0).expect("set_camera_read_mode failed");
+    set_readout_mode(camera, 0).expect("set_camera_read_mode failed");
     trace!(set_camera_read_mode = 0);
 
     init_camera(camera).expect("init_camera failed");

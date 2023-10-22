@@ -1,7 +1,7 @@
 use libqhyccd_sys::{
     close_camera, get_camera_id, get_number_of_readout_modes, get_readout_mode,
     get_readout_mode_name, get_readout_mode_resolution, get_sdk_version, init_camera, init_sdk,
-    open_camera, release_sdk, scan_qhyccd, set_read_mode, set_stream_mode, CameraStreamMode,
+    open_camera, release_sdk, scan_qhyccd, set_readout_mode, set_stream_mode, CameraStreamMode,
 };
 use tracing::trace;
 use tracing_subscriber::FmtSubscriber;
@@ -30,7 +30,7 @@ fn main() {
         .expect("set_camera_stream_mode failed");
     trace!(set_camera_stream_mode = ?CameraStreamMode::SingleFrameMode);
 
-    set_read_mode(camera, 0).expect("set_camera_read_mode failed");
+    set_readout_mode(camera, 0).expect("set_camera_read_mode failed");
     trace!(set_camera_read_mode = 0);
 
     init_camera(camera).expect("init_camera failed");

@@ -413,7 +413,7 @@ pub fn is_feature_supported(handle: QhyccdHandle, feature: CameraFeature) -> Res
     }
 }
 
-pub fn set_read_mode(handle: QhyccdHandle, mode: u32) -> Result<()> {
+pub fn set_readout_mode(handle: QhyccdHandle, mode: u32) -> Result<()> {
     match unsafe { bindings::SetQHYCCDReadMode(handle.ptr, mode) } {
         bindings::QHYCCD_SUCCESS => Ok(()),
         error_code => {
