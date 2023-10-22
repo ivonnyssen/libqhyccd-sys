@@ -798,7 +798,7 @@ pub fn get_type(handle: QhyccdHandle) -> Result<u32> {
     }
 }
 
-pub fn get_exposure_remaining(handle: QhyccdHandle) -> Result<u32> {
+pub fn get_remaining_exposure_us(handle: QhyccdHandle) -> Result<u32> {
     match unsafe { bindings::GetQHYCCDExposureRemaining(handle.ptr) } {
         bindings::QHYCCD_ERROR => {
             let error = QHYError::GetExposureRemainingError;
