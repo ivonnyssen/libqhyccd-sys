@@ -70,6 +70,8 @@ pub enum QHYError {
     GetCameraModelError { error_code: u32 },
     #[error("Error getting type of camera")]
     GetCameraTypeError,
+    #[error("Error getting remaining exposure time")]
+    GetExposureRemainingError,
 }
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct QhyccdHandle {
@@ -793,5 +795,17 @@ pub fn get_type(handle: QhyccdHandle) -> Result<u32> {
             Err(eyre!(error))
         }
         camera_type => Ok(camera_type),
+    }
+}
+
+pub fn get_exposure_remaining(handle: QhyccdHandle) -> Result<u32> {
+    match unsafe { bindings::GetQHYCCDExposureRemaining(handle.ptr) } {
+        bindings::QHYCCD_ERROR => {
+            let error = QHYError::GetExposureRemainingError;
+            tracing::error!(error = error.to_string().as_str());
+            Err(eyre!(error))
+        }
+        remaining if { remaining <= 100 } => Ok(0),
+        remaining => Ok(remaining),
     }
 }
