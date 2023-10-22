@@ -94,4 +94,6 @@ extern "C" {
     pub fn GetQHYCCDModel(handle: QhyccdHandle, model: *mut u8) -> u32;
     pub fn GetQHYCCDType(handle: QhyccdHandle) -> u32;
     pub fn GetQHYCCDExposureRemaining(handle: QhyccdHandle) -> u32;
+    pub fn CancelQHYCCDExposing(handle: QhyccdHandle) -> u32;
+    pub fn CancelQHYCCDExposingAndReadout(handle: QhyccdHandle) -> u32;
 }

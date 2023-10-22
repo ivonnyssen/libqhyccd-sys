@@ -72,6 +72,10 @@ pub enum QHYError {
     GetCameraTypeError,
     #[error("Error getting remaining exposure time")]
     GetExposureRemainingError,
+    #[error("Error stopping exposure {:?}", error_code)]
+    StopExposureError { error_code: u32 },
+    #[error("Error canceling exposure and readout {:?}", error_code)]
+    AbortExposureAndReadoutError { error_code: u32 },
 }
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct QhyccdHandle {
@@ -807,5 +811,27 @@ pub fn get_remaining_exposure_us(handle: QhyccdHandle) -> Result<u32> {
         }
         remaining if { remaining <= 100 } => Ok(0),
         remaining => Ok(remaining),
+    }
+}
+
+pub fn stop_exposure(handle: QhyccdHandle) -> Result<()> {
+    match unsafe { bindings::CancelQHYCCDExposing(handle.ptr) } {
+        bindings::QHYCCD_SUCCESS => Ok(()),
+        error_code => {
+            let error = QHYError::StopExposureError { error_code };
+            tracing::error!(error = error.to_string().as_str());
+            Err(eyre!(error))
+        }
+    }
+}
+
+pub fn abort_exposure_and_readout(handle: QhyccdHandle) -> Result<()> {
+    match unsafe { bindings::CancelQHYCCDExposingAndReadout(handle.ptr) } {
+        bindings::QHYCCD_SUCCESS => Ok(()),
+        error_code => {
+            let error = QHYError::AbortExposureAndReadoutError { error_code };
+            tracing::error!(error = error.to_string().as_str());
+            Err(eyre!(error))
+        }
     }
 }
