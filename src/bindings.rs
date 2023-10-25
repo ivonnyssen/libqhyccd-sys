@@ -25,7 +25,7 @@ extern "C" {
         day: *mut u32,
         subday: *mut u32,
     ) -> u32;
-    pub fn GetQHYCCDId(index: u32, id: *mut u8) -> u32;
+    pub fn GetQHYCCDId(index: u32, id: *mut c_char) -> u32;
     pub fn OpenQHYCCD(id: *const c_char) -> QhyccdHandle;
     pub fn GetQHYCCDFWVersion(h: QhyccdHandle, buf: *mut u8) -> u32;
     pub fn IsQHYCCDControlAvailable(h: QhyccdHandle, controlId: u32) -> u32;
