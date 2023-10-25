@@ -1,3 +1,5 @@
+use std::ffi::c_char;
+
 pub const QHYCCD_PCIE: u32 = 9;
 pub const QHYCCD_WINPCAP: u32 = 8;
 pub const QHYCCD_QGIGAE: u32 = 7;
@@ -24,7 +26,7 @@ extern "C" {
         subday: *mut u32,
     ) -> u32;
     pub fn GetQHYCCDId(index: u32, id: *mut u8) -> u32;
-    pub fn OpenQHYCCD(id: *const u8) -> QhyccdHandle;
+    pub fn OpenQHYCCD(id: *const c_char) -> QhyccdHandle;
     pub fn GetQHYCCDFWVersion(h: QhyccdHandle, buf: *mut u8) -> u32;
     pub fn IsQHYCCDControlAvailable(h: QhyccdHandle, controlId: u32) -> u32;
     pub fn SetQHYCCDReadMode(h: QhyccdHandle, mode: u32) -> u32;
