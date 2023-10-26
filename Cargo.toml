@@ -2,7 +2,7 @@
 name = "libqhyccd-sys"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.60.0" # for log
+rust-version = "1.64.0" # for std::ffi::c_char
 
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
