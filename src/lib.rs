@@ -1,3 +1,4 @@
+use std::ffi::c_char;
 use std::ffi::CStr;
 
 use eyre::eyre;
@@ -239,7 +240,7 @@ pub struct ReadoutMode {
 ///
 /// # Example
 ///
-/// ```
+/// ```no_run
 /// # use libqhyccd_sys::init_sdk;
 /// use eyre::Result;
 ///
@@ -271,7 +272,7 @@ pub fn release_sdk() -> Result<()> {
 ///
 /// # Example
 ///
-/// ```
+/// ```no_run
 /// # use libqhyccd_sys::scan_qhyccd;
 /// use eyre::Result;
 ///
@@ -299,7 +300,7 @@ pub struct SDKVersion {
 
 /// Get the QHYCCD SDK version
 /// # Example
-/// ```
+/// ```no_run
 /// # use libqhyccd_sys::get_sdk_version;
 /// # use libqhyccd_sys::SDKVersion;
 /// use eyre::Result;
@@ -330,7 +331,7 @@ pub fn get_sdk_version() -> Result<SDKVersion> {
 }
 
 pub fn get_camera_id(index: u32) -> Result<String> {
-    let mut id = [0u8; 32];
+    let mut id: [c_char; 32] = [0; 32];
     unsafe {
         match bindings::GetQHYCCDId(index, id.as_mut_ptr()) {
             bindings::QHYCCD_SUCCESS => {
@@ -718,7 +719,7 @@ pub fn get_number_of_readout_modes(handle: QhyccdHandle) -> Result<u32> {
 }
 
 pub fn get_readout_mode_name(handle: QhyccdHandle, index: u32) -> Result<String> {
-    let mut name = [0u8; 80];
+    let mut name: [c_char; 80] = [0; 80];
     match unsafe { bindings::GetQHYCCDReadModeName(handle.ptr, index, name.as_mut_ptr()) } {
         bindings::QHYCCD_ERROR => {
             let error = QHYError::GetReadoutModeNameError;
@@ -771,7 +772,7 @@ pub fn get_readout_mode(handle: QhyccdHandle) -> Result<u32> {
 }
 
 pub fn get_model(handle: QhyccdHandle) -> Result<String> {
-    let mut model = [0u8; 80];
+    let mut model: [c_char; 80] = [0; 80];
     match unsafe { bindings::GetQHYCCDModel(handle.ptr, model.as_mut_ptr()) } {
         bindings::QHYCCD_SUCCESS => {
             let model = match unsafe { CStr::from_ptr(model.as_ptr()) }.to_str() {

@@ -1,3 +1,5 @@
+use std::ffi::c_char;
+
 pub const QHYCCD_PCIE: u32 = 9;
 pub const QHYCCD_WINPCAP: u32 = 8;
 pub const QHYCCD_QGIGAE: u32 = 7;
@@ -23,8 +25,8 @@ extern "C" {
         day: *mut u32,
         subday: *mut u32,
     ) -> u32;
-    pub fn GetQHYCCDId(index: u32, id: *mut u8) -> u32;
-    pub fn OpenQHYCCD(id: *const u8) -> QhyccdHandle;
+    pub fn GetQHYCCDId(index: u32, id: *mut c_char) -> u32;
+    pub fn OpenQHYCCD(id: *const c_char) -> QhyccdHandle;
     pub fn GetQHYCCDFWVersion(h: QhyccdHandle, buf: *mut u8) -> u32;
     pub fn IsQHYCCDControlAvailable(h: QhyccdHandle, controlId: u32) -> u32;
     pub fn SetQHYCCDReadMode(h: QhyccdHandle, mode: u32) -> u32;
@@ -89,9 +91,9 @@ extern "C" {
         width: *mut u32,
         height: *mut u32,
     ) -> u32;
-    pub fn GetQHYCCDReadModeName(handle: QhyccdHandle, mode: u32, name: *mut u8) -> u32;
+    pub fn GetQHYCCDReadModeName(handle: QhyccdHandle, mode: u32, name: *mut c_char) -> u32;
     pub fn GetQHYCCDReadMode(handle: QhyccdHandle, mode: *mut u32) -> u32;
-    pub fn GetQHYCCDModel(handle: QhyccdHandle, model: *mut u8) -> u32;
+    pub fn GetQHYCCDModel(handle: QhyccdHandle, model: *mut c_char) -> u32;
     pub fn GetQHYCCDType(handle: QhyccdHandle) -> u32;
     pub fn GetQHYCCDExposureRemaining(handle: QhyccdHandle) -> u32;
     pub fn CancelQHYCCDExposing(handle: QhyccdHandle) -> u32;
